@@ -519,13 +519,11 @@
     }
 
     async function signUp(email, password) {
-      const res = await fetch(`${AUTH_URL}/signup`, {
+      const redirectTo = encodeURIComponent('https://kivancyazici75.github.io/todo-app/');
+      const res = await fetch(`${AUTH_URL}/signup?redirect_to=${redirectTo}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
-        body:    JSON.stringify({
-          email, password,
-          options: { emailRedirectTo: 'https://kivancyazici75.github.io/todo-app/' }
-        })
+        body:    JSON.stringify({ email, password })
       });
       const data = await res.json();
       if (!res.ok) {
