@@ -268,7 +268,7 @@
 
     <div class="input-area">
       <input type="text" id="todoInput" placeholder="Yeni görev ekle..." maxlength="120">
-      <button onclick="addTodo()">Ekle</button>
+      <button id="addBtn" onclick="addTodo()">Ekle</button>
     </div>
 
     <div class="filters">
@@ -277,7 +277,8 @@
       <button onclick="setFilter('done', this)">Tamamlanan</button>
     </div>
 
-    <div class="todo-list" id="todoList"></div>
+    <div class="error-bar" id="errorBar" style="display:none;background:#fee2e2;color:#b91c1c;font-size:.82rem;padding:10px 20px;"></div>
+    <div class="todo-list" id="todoList"><div style="text-align:center;color:#9ca3af;font-size:.9rem;padding:30px;">Yükleniyor...</div></div>
 
     <div class="footer">
       <span id="statusText">0 görev</span>
@@ -286,38 +287,106 @@
   </div>
 
   <script>
-    let todos = JSON.parse(localStorage.getItem('todos') || '[]');
+    const SUPABASE_URL = 'https://lwaoegnarishkhzocbaw.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx3YW9lZ25hcmlzaGtoem9jYmF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MDkwMjEsImV4cCI6MjA5MjI4NTAyMX0.r6KQ7hsVajDZUiwN3QaquOQxGp19jkdeUBQCxfjHlvM';
+    const BASE = `${SUPABASE_URL}/rest/v1/todos`;
+    const HEADERS = {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Prefer': 'return=representation'
+    };
+
+    let todos = [];
     let filter = 'all';
 
     const input = document.getElementById('todoInput');
     input.addEventListener('keydown', e => { if (e.key === 'Enter') addTodo(); });
 
-    function addTodo() {
+    async function api(method, url, body) {
+      const res = await fetch(url, {
+        method,
+        headers: HEADERS,
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const text = await res.text();
+      return text ? JSON.parse(text) : [];
+    }
+
+    function showError(msg) {
+      const bar = document.getElementById('errorBar');
+      bar.textContent = msg;
+      bar.style.display = 'block';
+      setTimeout(() => bar.style.display = 'none', 4000);
+    }
+
+    async function loadTodos() {
+      try {
+        todos = await api('GET', `${BASE}?select=*&order=created_at.asc`);
+        render();
+      } catch (e) {
+        showError('Görevler yüklenemedi: ' + e.message);
+        document.getElementById('todoList').innerHTML = '<div class="empty">Yüklenemedi</div>';
+      }
+    }
+
+    async function addTodo() {
       const text = input.value.trim();
       if (!text) return;
-      todos.push({ id: Date.now(), text, done: false });
-      input.value = '';
-      save();
-      render();
+      const btn = document.getElementById('addBtn');
+      btn.disabled = true;
+      input.disabled = true;
+      try {
+        const [created] = await api('POST', BASE, { text, done: false });
+        todos.push(created);
+        input.value = '';
+        render();
+      } catch (e) {
+        showError('Eklenemedi: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        input.disabled = false;
+        input.focus();
+      }
     }
 
-    function toggleTodo(id) {
+    async function toggleTodo(id) {
       const todo = todos.find(t => t.id === id);
-      if (todo) todo.done = !todo.done;
-      save();
+      if (!todo) return;
+      const newDone = !todo.done;
+      todo.done = newDone;
       render();
+      try {
+        await api('PATCH', `${BASE}?id=eq.${id}`, { done: newDone });
+      } catch (e) {
+        todo.done = !newDone;
+        render();
+        showError('Güncellenemedi: ' + e.message);
+      }
     }
 
-    function deleteTodo(id) {
+    async function deleteTodo(id) {
       todos = todos.filter(t => t.id !== id);
-      save();
       render();
+      try {
+        await api('DELETE', `${BASE}?id=eq.${id}`);
+      } catch (e) {
+        showError('Silinemedi: ' + e.message);
+        await loadTodos();
+      }
     }
 
-    function clearDone() {
+    async function clearDone() {
+      if (!todos.some(t => t.done)) return;
       todos = todos.filter(t => !t.done);
-      save();
       render();
+      try {
+        await api('DELETE', `${BASE}?done=eq.true`);
+      } catch (e) {
+        showError('Silinemedi: ' + e.message);
+        await loadTodos();
+      }
     }
 
     function setFilter(f, btn) {
@@ -325,10 +394,6 @@
       document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       render();
-    }
-
-    function save() {
-      localStorage.setItem('todos', JSON.stringify(todos));
     }
 
     function render() {
@@ -376,18 +441,27 @@
       });
     }
 
-    function saveEdit(id) {
+    async function saveEdit(id) {
       const editInput = document.getElementById(`edit-input-${id}`);
       const newText = editInput.value.trim();
       if (!newText) return;
       const todo = todos.find(t => t.id === id);
-      if (todo) todo.text = newText;
-      save();
+      if (!todo) return;
+      const oldText = todo.text;
+      todo.text = newText;
       render();
+      try {
+        await api('PATCH', `${BASE}?id=eq.${id}`, { text: newText });
+      } catch (e) {
+        todo.text = oldText;
+        render();
+        showError('Güncellenemedi: ' + e.message);
+      }
     }
 
     function cancelEdit(id) {
       const item = document.getElementById(`item-${id}`);
+      if (!item) return;
       item.classList.remove('editing');
       item.querySelectorAll('.edit-input, .save-btn, .cancel-btn').forEach(el => el.remove());
     }
@@ -396,7 +470,7 @@
       return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    render();
+    loadTodos();
   </script>
 </body>
 </html>
