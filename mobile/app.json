@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Todo Uygulaması",
+    "slug": "todo-app",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.kivancyazici75.todoapp"
+    },
+    "android": {
+      "package": "com.kivancyazici75.todoapp",
+      "adaptiveIcon": {
+        "backgroundColor": "#4f46e5"
+      }
+    }
+  }
+}
